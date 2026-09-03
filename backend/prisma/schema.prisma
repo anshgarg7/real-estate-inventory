@@ -1,0 +1,168 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  AGENT
+  ACCOUNTANT
+}
+
+enum PlotStatus {
+  AVAILABLE
+  RESERVED
+  SOLD
+}
+
+enum SaleStatus {
+  ACTIVE
+  CANCELLED
+  COMPLETED
+}
+
+enum InstallmentType {
+  DOWN_PAYMENT
+  INSTALLMENT
+}
+
+enum InstallmentStatus {
+  PENDING
+  PARTIAL
+  PAID
+  OVERDUE
+}
+
+enum InstallmentFrequency {
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  CHEQUE
+  ONLINE
+}
+
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(AGENT)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  salesAsAgent Sale[]        @relation("AgentSales")
+  payments     Payment[]     @relation("RecordedByUser")
+}
+
+model Project {
+  id          String   @id @default(uuid())
+  name        String
+  location    String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  plots Plot[]
+}
+
+model Plot {
+  id            String     @id @default(uuid())
+  project       Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId     String
+  plotNumber    String
+  block         String?
+  sizeValue     Decimal    @db.Decimal(12, 2)
+  sizeUnit      String     @default("Sq. Yard (Gaj)")
+  ratePerUnit   Decimal    @db.Decimal(14, 2)
+  totalPrice    Decimal    @db.Decimal(14, 2)
+  status        PlotStatus @default(AVAILABLE)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  sales Sale[]
+
+  @@unique([projectId, plotNumber])
+  @@index([status])
+}
+
+model Customer {
+  id        String   @id @default(uuid())
+  name      String
+  email     String?
+  phone     String
+  cnic      String?  @unique
+  address   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sales Sale[]
+}
+
+model Sale {
+  id                    String                @id @default(uuid())
+  plot                  Plot                  @relation(fields: [plotId], references: [id])
+  plotId                String
+  customer              Customer              @relation(fields: [customerId], references: [id])
+  customerId            String
+  agent                 User                  @relation("AgentSales", fields: [agentId], references: [id])
+  agentId               String
+  totalPrice            Decimal               @db.Decimal(14, 2)
+  downPayment            Decimal              @db.Decimal(14, 2)
+  numberOfInstallments  Int
+  installmentFrequency  InstallmentFrequency  @default(MONTHLY)
+  startDate             DateTime
+  status                SaleStatus            @default(ACTIVE)
+  notes                 String?
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+
+  installments Installment[]
+
+  @@index([status])
+}
+
+model Installment {
+  id            String            @id @default(uuid())
+  sale          Sale              @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  saleId        String
+  type          InstallmentType   @default(INSTALLMENT)
+  sequence      Int
+  dueDate       DateTime
+  amountDue     Decimal           @db.Decimal(14, 2)
+  amountPaid    Decimal           @db.Decimal(14, 2) @default(0)
+  status        InstallmentStatus @default(PENDING)
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  payments Payment[]
+
+  @@unique([saleId, sequence])
+  @@index([status])
+  @@index([dueDate])
+}
+
+model Payment {
+  id             String        @id @default(uuid())
+  installment    Installment   @relation(fields: [installmentId], references: [id], onDelete: Cascade)
+  installmentId  String
+  amount         Decimal       @db.Decimal(14, 2)
+  paymentDate    DateTime      @default(now())
+  method         PaymentMethod @default(CASH)
+  receiptNumber  String?
+  notes          String?
+  recordedBy     User          @relation("RecordedByUser", fields: [recordedById], references: [id])
+  recordedById   String
+  createdAt      DateTime      @default(now())
+
+  @@index([paymentDate])
+}
