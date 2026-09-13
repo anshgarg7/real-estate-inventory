@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { Plus } from "lucide-react";
+import { Plus, Pencil } from "lucide-react";
 import { projectsApi, apiErrorMessage } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/lib/toast";
@@ -22,6 +22,13 @@ export function ProjectsPage() {
   const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const [editing, setEditing] = useState<Project | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editLocation, setEditLocation] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editError, setEditError] = useState<string | null>(null);
+  const [editSubmitting, setEditSubmitting] = useState(false);
 
   function load() {
     setLoading(true);
@@ -50,6 +57,35 @@ export function ProjectsPage() {
       setError(apiErrorMessage(err));
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  function openEdit(p: Project) {
+    setEditing(p);
+    setEditName(p.name);
+    setEditLocation(p.location);
+    setEditDescription(p.description ?? "");
+    setEditError(null);
+  }
+
+  async function handleEdit(e: FormEvent) {
+    e.preventDefault();
+    if (!editing) return;
+    setEditError(null);
+    setEditSubmitting(true);
+    try {
+      await projectsApi.update(editing.id, {
+        name: editName,
+        location: editLocation,
+        description: editDescription || undefined,
+      });
+      show("Project updated");
+      setEditing(null);
+      load();
+    } catch (err) {
+      setEditError(apiErrorMessage(err));
+    } finally {
+      setEditSubmitting(false);
     }
   }
 
@@ -100,18 +136,62 @@ export function ProjectsPage() {
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {projects.map((p) => (
-            <Link key={p.id} to={`/projects/${p.id}`}>
-              <Card className="h-full transition-colors hover:border-primary">
-                <CardContent className="flex flex-col gap-1 p-5">
-                  <h2 className="font-semibold">{p.name}</h2>
-                  <p className="text-sm text-muted-foreground">{p.location}</p>
-                  <p className="mt-2 text-xs text-muted-foreground">{p._count?.plots ?? 0} plots</p>
-                </CardContent>
-              </Card>
-            </Link>
+            <div key={p.id} className="relative">
+              <Link to={`/projects/${p.id}`}>
+                <Card className="h-full transition-colors hover:border-primary">
+                  <CardContent className="flex flex-col gap-1 p-5">
+                    <h2 className="font-semibold">{p.name}</h2>
+                    <p className="text-sm text-muted-foreground">{p.location}</p>
+                    <p className="mt-2 text-xs text-muted-foreground">{p._count?.plots ?? 0} plots</p>
+                  </CardContent>
+                </Card>
+              </Link>
+              {user?.role === "ADMIN" && (
+                <button
+                  type="button"
+                  aria-label="Edit project"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    openEdit(p);
+                  }}
+                  className="absolute right-3 top-3 rounded-md border border-input bg-card p-1.5 text-muted-foreground shadow-sm hover:text-foreground"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
           ))}
         </div>
       )}
+
+      <Dialog open={!!editing} onOpenChange={(v) => !v && setEditing(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Project</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleEdit} className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="edit-name">Name</Label>
+              <Input id="edit-name" required value={editName} onChange={(e) => setEditName(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="edit-location">Location</Label>
+              <Input id="edit-location" required value={editLocation} onChange={(e) => setEditLocation(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="edit-description">Description</Label>
+              <Input id="edit-description" value={editDescription} onChange={(e) => setEditDescription(e.target.value)} />
+            </div>
+            {editError && <p className="text-sm text-destructive">{editError}</p>}
+            <DialogFooter>
+              <Button type="submit" disabled={editSubmitting}>
+                {editSubmitting ? "Saving…" : "Save"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

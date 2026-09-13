@@ -88,7 +88,7 @@ export const plotsApi = {
     ratePerUnit: number;
     totalPrice: number;
   }) => api.post<Plot>("/plots", data),
-  update: (id: string, data: Partial<{ plotNumber: string; block: string; sizeValue: number; ratePerUnit: number; totalPrice: number; status: PlotStatus }>) =>
+  update: (id: string, data: Partial<{ plotNumber: string; block: string; sizeValue: number; sizeUnit: string; ratePerUnit: number; totalPrice: number; status: PlotStatus }>) =>
     api.patch<Plot>(`/plots/${id}`, data),
   remove: (id: string) => api.delete(`/plots/${id}`),
 };
