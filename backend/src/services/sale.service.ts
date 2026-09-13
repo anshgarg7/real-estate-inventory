@@ -124,9 +124,12 @@ export async function createSale(input: CreateSaleInput) {
   return prisma.$transaction(async (tx) => {
     const plot = await tx.plot.findUnique({ where: { id: input.plotId } });
     if (!plot) throw new AppError("Plot not found", 404);
-    if (plot.status !== "AVAILABLE") {
-      throw new AppError(`Plot is not available (current status: ${plot.status})`, 409);
+    if (plot.status === "RESERVED") {
+      throw new AppError("Plot is already reserved under an active sale", 409);
     }
+    // A SOLD plot can still be sold again (a resale/transfer to a new party) — its
+    // earlier sale record is left untouched as history, only the plot flips back
+    // to RESERVED for the new sale.
 
     const customer = await tx.customer.findUnique({ where: { id: input.customerId } });
     if (!customer) throw new AppError("Customer not found", 404);

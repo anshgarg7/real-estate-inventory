@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Plus, Trash2 } from "lucide-react";
 import { customersApi, plotsApi, salesApi, apiErrorMessage } from "@/lib/api";
 import { useToast } from "@/lib/toast";
@@ -27,6 +27,8 @@ const emptyCustomRow: CustomRow = { amountDue: "", dueDate: "" };
 export function NewSalePage() {
   const navigate = useNavigate();
   const { show } = useToast();
+  const [searchParams] = useSearchParams();
+  const resalePlotId = searchParams.get("plotId");
   const [plots, setPlots] = useState<Plot[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
 
@@ -52,14 +54,23 @@ export function NewSalePage() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    plotsApi.list({ status: "AVAILABLE" }).then((r) => setPlots(r.data));
+    if (resalePlotId) {
+      plotsApi.get(resalePlotId).then((r) => {
+        setPlots([r.data]);
+        setPlotId(r.data.id);
+      });
+    } else {
+      plotsApi.list({ status: "AVAILABLE" }).then((r) => setPlots(r.data));
+    }
     customersApi.list().then((r) => setCustomers(r.data));
-  }, []);
+  }, [resalePlotId]);
 
   useEffect(() => {
     const plot = plots.find((p) => p.id === plotId);
     if (plot) setTotalPrice(plot.totalPrice);
   }, [plotId, plots]);
+
+  const isResale = !!resalePlotId && plots.some((p) => p.id === resalePlotId && p.status === "SOLD");
 
   useEffect(() => {
     if (scheduleMode !== "auto") return;
@@ -146,7 +157,13 @@ export function NewSalePage() {
       <Link to="/sales" className="flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="h-4 w-4" /> Back to sales
       </Link>
-      <h1 className="text-xl font-semibold">New Sale</h1>
+      <h1 className="text-xl font-semibold">{isResale ? "Resell Plot" : "New Sale"}</h1>
+      {isResale && (
+        <p className="rounded-md bg-secondary px-3 py-2 text-sm text-muted-foreground">
+          This plot was already sold and fully paid off. Creating a new sale here records a resale to a new
+          party — the previous sale stays in the plot's history.
+        </p>
+      )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card>
@@ -157,7 +174,13 @@ export function NewSalePage() {
             <form onSubmit={handleSubmit} className="flex flex-col gap-4">
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="plot">Plot</Label>
-                <Select id="plot" required value={plotId} onChange={(e) => setPlotId(e.target.value)}>
+                <Select
+                  id="plot"
+                  required
+                  disabled={isResale}
+                  value={plotId}
+                  onChange={(e) => setPlotId(e.target.value)}
+                >
                   <option value="" disabled>
                     Select an available plot
                   </option>
@@ -273,7 +296,7 @@ export function NewSalePage() {
               </div>
               {error && <p className="text-sm text-destructive">{error}</p>}
               <Button type="submit" disabled={submitting || !canSubmit}>
-                {submitting ? "Creating…" : "Create Sale"}
+                {submitting ? "Creating…" : isResale ? "Record Resale" : "Create Sale"}
               </Button>
             </form>
           </CardContent>

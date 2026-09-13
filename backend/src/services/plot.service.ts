@@ -16,7 +16,13 @@ export async function listPlots(filters: { projectId?: string; status?: PlotStat
 export async function getPlot(id: string) {
   const plot = await prisma.plot.findUnique({
     where: { id },
-    include: { project: true },
+    include: {
+      project: true,
+      sales: {
+        orderBy: { createdAt: "desc" },
+        include: { customer: true, agent: { select: { id: true, name: true } } },
+      },
+    },
   });
   if (!plot) throw new AppError("Plot not found", 404);
   return plot;

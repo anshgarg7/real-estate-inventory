@@ -35,6 +35,7 @@ export interface Plot {
   totalPrice: string;
   status: PlotStatus;
   project?: Project;
+  sales?: Sale[];
 }
 
 export interface Customer {

@@ -1,18 +1,18 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Plus, Pencil } from "lucide-react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { ArrowLeft, Plus, Pencil, History, ArrowRightLeft } from "lucide-react";
 import { plotsApi, projectsApi, apiErrorMessage } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/lib/toast";
 import type { Plot, Project } from "@/lib/types";
+import { StatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { StatusBadge } from "@/components/StatusBadge";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatDate } from "@/lib/utils";
 import { DEFAULT_LAND_UNIT, LAND_UNITS } from "@/lib/landUnits";
 import { PLOT_FEATURES } from "@/lib/plotFeatures";
 
@@ -28,6 +28,7 @@ const emptyForm: PlotForm = { plotNumber: "", block: "", sizeValue: "", sizeUnit
 
 export function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { show } = useToast();
   const [project, setProject] = useState<(Project & { plots: Plot[] }) | null>(null);
@@ -47,6 +48,9 @@ export function ProjectDetailPage() {
   const [editPlotForm, setEditPlotForm] = useState<PlotForm>(emptyForm);
   const [editPlotError, setEditPlotError] = useState<string | null>(null);
   const [editPlotSubmitting, setEditPlotSubmitting] = useState(false);
+
+  const [historyPlot, setHistoryPlot] = useState<Plot | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   function load() {
     if (!id) return;
@@ -152,6 +156,16 @@ export function ProjectDetailPage() {
     } finally {
       setEditPlotSubmitting(false);
     }
+  }
+
+  function openHistory(plot: Plot) {
+    setHistoryPlot(plot);
+    setHistoryLoading(true);
+    plotsApi
+      .get(plot.id)
+      .then((r) => setHistoryPlot(r.data))
+      .catch((err) => show(apiErrorMessage(err), "error"))
+      .finally(() => setHistoryLoading(false));
   }
 
   if (!project) return <p className="text-sm text-muted-foreground">Loading…</p>;
@@ -272,7 +286,7 @@ export function ProjectDetailPage() {
               <TableHead>Rate</TableHead>
               <TableHead>Total Price</TableHead>
               <TableHead>Status</TableHead>
-              {user?.role === "ADMIN" && <TableHead className="text-right">Actions</TableHead>}
+              <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -288,18 +302,38 @@ export function ProjectDetailPage() {
                 <TableCell>
                   <StatusBadge status={plot.status} />
                 </TableCell>
-                {user?.role === "ADMIN" && (
-                  <TableCell className="text-right">
+                <TableCell>
+                  <div className="flex justify-end gap-2">
                     <button
                       type="button"
-                      aria-label="Edit plot"
-                      onClick={() => openEditPlot(plot)}
+                      aria-label="Sale history"
+                      onClick={() => openHistory(plot)}
                       className="rounded-md border border-input bg-card p-1.5 text-muted-foreground shadow-sm hover:text-foreground"
                     >
-                      <Pencil className="h-3.5 w-3.5" />
+                      <History className="h-3.5 w-3.5" />
                     </button>
-                  </TableCell>
-                )}
+                    {plot.status === "SOLD" && (user?.role === "ADMIN" || user?.role === "AGENT") && (
+                      <button
+                        type="button"
+                        aria-label="Resell plot"
+                        onClick={() => navigate(`/sales/new?plotId=${plot.id}`)}
+                        className="rounded-md border border-input bg-card p-1.5 text-muted-foreground shadow-sm hover:text-foreground"
+                      >
+                        <ArrowRightLeft className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                    {user?.role === "ADMIN" && (
+                      <button
+                        type="button"
+                        aria-label="Edit plot"
+                        onClick={() => openEditPlot(plot)}
+                        className="rounded-md border border-input bg-card p-1.5 text-muted-foreground shadow-sm hover:text-foreground"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -345,6 +379,38 @@ export function ProjectDetailPage() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!historyPlot} onOpenChange={(v) => !v && setHistoryPlot(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Sale History{historyPlot ? ` — ${historyPlot.plotNumber}` : ""}</DialogTitle>
+          </DialogHeader>
+          {historyLoading ? (
+            <p className="text-sm text-muted-foreground">Loading…</p>
+          ) : !historyPlot?.sales || historyPlot.sales.length === 0 ? (
+            <p className="text-sm text-muted-foreground">This plot has never been sold.</p>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {historyPlot.sales.map((sale) => (
+                <Link
+                  key={sale.id}
+                  to={`/sales/${sale.id}`}
+                  className="flex flex-col gap-1 rounded-md border border-border p-3 text-sm transition-colors hover:border-primary"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium">{sale.customer?.name}</span>
+                    <StatusBadge status={sale.status} />
+                  </div>
+                  <div className="flex items-center justify-between text-muted-foreground">
+                    <span>{formatDate(sale.startDate)}</span>
+                    <span>{formatCurrency(sale.totalPrice)}</span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
